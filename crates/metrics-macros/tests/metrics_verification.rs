@@ -421,3 +421,47 @@ fn test_full_instrumentation_failure() {
         "Error counter SHOULD increment on failure"
     );
 }
+
+// ============================================================================
+// Struct Field Label Tests
+// ============================================================================
+
+struct HttpRequest {
+    method: String,
+    path: String,
+}
+
+#[instrument_metrics(
+    counter = "test_struct_field_total",
+    labels(service = "api", request.method, request.path)
+)]
+fn fn_with_struct_field_labels(request: &HttpRequest) {
+    let _ = request;
+}
+
+#[test]
+fn test_struct_field_labels_captured() {
+    let snapshotter = setup_recorder();
+
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/users".to_string(),
+    };
+    fn_with_struct_field_labels(&request);
+
+    // Verify counter exists with struct field values as labels
+    let counter = get_counter_with_labels(
+        snapshotter,
+        "test_struct_field_total",
+        &[
+            ("service", "api"),
+            ("method", "POST"),
+            ("path", "/api/users"),
+        ],
+    );
+    assert!(
+        counter.is_some(),
+        "Counter with struct field labels should exist"
+    );
+    assert_eq!(counter.unwrap(), 1, "Counter should be 1");
+}
