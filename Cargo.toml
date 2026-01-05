@@ -1,27 +1,23 @@
-[package]
-name = "metrics-helper-macros"
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Proc-macros for idiomatic Prometheus metrics instrumentation in Rust"
 repository = "https://github.com/jdcasale/metrics-helper"
-keywords = ["metrics", "prometheus", "instrumentation", "macros"]
-categories = ["development-tools::procedural-macro-helpers"]
 
-[lib]
-proc-macro = true
-
-[dependencies]
+[workspace.dependencies]
+# Proc-macro dependencies
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
 darling = "0.20"
 
-[dev-dependencies]
+# Runtime dependencies
 metrics = "0.24"
+
+# Dev dependencies
 metrics-util = { version = "0.19", features = ["debugging"] }
 tokio = { version = "1", features = ["rt", "macros"] }
-
-[features]
-default = []
-metrics = []
