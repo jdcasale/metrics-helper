@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/jdcasale/metrics-helper/compare/metrics-helper-macros-v0.1.1...metrics-helper-macros-v0.1.2) (2026-01-05)
+
+
+### Bug Fixes
+
+* force re-release ([#4](https://github.com/jdcasale/metrics-helper/issues/4)) ([55d94bb](https://github.com/jdcasale/metrics-helper/commit/55d94bb8fde9a8b6890a1af32764ab400d98a667))
+
 ## [0.1.1](https://github.com/jdcasale/metrics-helper/compare/metrics-helper-macros-v0.1.0...metrics-helper-macros-v0.1.1) (2026-01-05)
 
 
