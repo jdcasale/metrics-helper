@@ -197,14 +197,39 @@ impl Parse for LabelItem {
 }
 
 impl LabelItem {
+    /// Generate the variable name used to capture this label's value
+    fn capture_var_name(&self) -> syn::Ident {
+        syn::Ident::new(
+            &format!("__metrics_label_{}", self.key),
+            proc_macro2::Span::call_site(),
+        )
+    }
+
+    /// Generate code to capture dynamic label values upfront.
+    /// Returns None for static labels (no capture needed).
+    fn capture_statement(&self) -> Option<proc_macro2::TokenStream> {
+        match &self.value {
+            LabelValue::Static(_) => None,
+            LabelValue::Dynamic(expr) => {
+                let var_name = self.capture_var_name();
+                Some(quote! {
+                    let #var_name = (#expr).to_string();
+                })
+            }
+        }
+    }
+
+    /// Generate the label key-value pair for use in metrics macros.
+    /// For dynamic labels, references the captured variable.
     fn to_token_stream(&self) -> proc_macro2::TokenStream {
         let key = &self.key;
         match &self.value {
             LabelValue::Static(value) => {
                 quote! { #key => #value }
             }
-            LabelValue::Dynamic(expr) => {
-                quote! { #key => (#expr).to_string() }
+            LabelValue::Dynamic(_) => {
+                let var_name = self.capture_var_name();
+                quote! { #key => #var_name.clone() }
             }
         }
     }
@@ -329,7 +354,11 @@ fn instrument_metrics_impl(
     // Check if return type is Result for error tracking
     let returns_result = matches!(&sig.output, ReturnType::Type(_, ty) if is_result_type(ty));
 
-    // Build label tokens for metrics macros
+    // Build label captures (evaluated upfront before async block or function body)
+    // This ensures we capture values before they might be moved/consumed
+    let label_captures = build_label_captures(&labels);
+
+    // Build label tokens for metrics macros (references the captured values)
     let label_tokens = build_label_tokens(&labels);
 
     // Build the counter increment code
@@ -369,6 +398,7 @@ fn instrument_metrics_impl(
     let instrumented_body = if is_async {
         build_async_body(
             block,
+            label_captures,
             counter_code,
             histogram_code,
             error_counter_code,
@@ -377,6 +407,7 @@ fn instrument_metrics_impl(
     } else {
         build_sync_body(
             block,
+            label_captures,
             counter_code,
             histogram_code,
             error_counter_code,
@@ -410,6 +441,21 @@ fn parse_labels_from_meta(attr_args: &[NestedMeta]) -> Result<Vec<LabelItem>, Er
     Ok(Vec::new())
 }
 
+/// Generate code to capture all dynamic label values upfront.
+/// This must be called before any code that might move/consume the labeled values.
+fn build_label_captures(labels: &[LabelItem]) -> TokenStream2 {
+    let captures: Vec<TokenStream2> = labels
+        .iter()
+        .filter_map(|label| label.capture_statement())
+        .collect();
+
+    if captures.is_empty() {
+        quote! {}
+    } else {
+        quote! { #(#captures)* }
+    }
+}
+
 fn build_label_tokens(labels: &[LabelItem]) -> TokenStream2 {
     if labels.is_empty() {
         return quote! {};
@@ -423,6 +469,7 @@ fn build_label_tokens(labels: &[LabelItem]) -> TokenStream2 {
 
 fn build_async_body(
     block: &syn::Block,
+    label_captures: TokenStream2,
     counter_code: Option<TokenStream2>,
     histogram_code: Option<TokenStream2>,
     error_counter_code: Option<TokenStream2>,
@@ -439,6 +486,9 @@ fn build_async_body(
     let error_counter = error_counter_code.unwrap_or_else(|| quote! {});
 
     quote! {
+        // Capture dynamic label values upfront before async block
+        #label_captures
+
         #counter
         #timing_start
 
@@ -453,6 +503,7 @@ fn build_async_body(
 
 fn build_sync_body(
     block: &syn::Block,
+    label_captures: TokenStream2,
     counter_code: Option<TokenStream2>,
     histogram_code: Option<TokenStream2>,
     error_counter_code: Option<TokenStream2>,
@@ -469,6 +520,9 @@ fn build_sync_body(
     let error_counter = error_counter_code.unwrap_or_else(|| quote! {});
 
     quote! {
+        // Capture dynamic label values upfront
+        #label_captures
+
         #counter
         #timing_start
 
