@@ -197,6 +197,30 @@ fn nested_struct_field(nested: &Nested) {
     let _ = nested;
 }
 
+/// Test: Async function that consumes the struct (verifies borrow fix)
+/// Labels are captured upfront before the async block, so this compiles.
+#[instrument_metrics(
+    counter = "async_consume_calls_total",
+    histogram = "async_consume_duration_seconds",
+    labels(request.method, request.path)
+)]
+async fn async_consumes_struct(request: Request) -> String {
+    // Simulate consuming the request by moving it
+    let owned = request;
+    format!("processed {} {}", owned.method, owned.path)
+}
+
+/// Test: Sync function that moves the struct (verifies borrow fix)
+#[instrument_metrics(
+    counter = "sync_consume_calls_total",
+    histogram = "sync_consume_duration_seconds",
+    labels(request.method)
+)]
+fn sync_consumes_struct(request: Request) -> String {
+    let owned = request;
+    owned.method
+}
+
 // ============================================================================
 // Edge Cases
 // ============================================================================
@@ -314,6 +338,31 @@ mod runtime_tests {
 
         let nested = Nested { inner: request };
         nested_struct_field(&nested);
+    }
+
+    #[test]
+    fn test_struct_consumed_sync() {
+        // Test that sync functions can consume structs when using struct field labels
+        let request = Request {
+            method: "DELETE".to_string(),
+            path: "/resource".to_string(),
+            user_id: 1,
+        };
+        let result = sync_consumes_struct(request);
+        assert_eq!(result, "DELETE");
+    }
+
+    #[tokio::test]
+    async fn test_struct_consumed_async() {
+        // Test that async functions can consume structs when using struct field labels
+        // This verifies the borrow fix - labels are captured upfront
+        let request = Request {
+            method: "POST".to_string(),
+            path: "/api/data".to_string(),
+            user_id: 99,
+        };
+        let result = async_consumes_struct(request).await;
+        assert_eq!(result, "processed POST /api/data");
     }
 
     #[tokio::test]
