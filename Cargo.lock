@@ -198,7 +198,7 @@ dependencies = [
 
 [[package]]
 name = "metrics-helper-macros"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "darling",
  "metrics",

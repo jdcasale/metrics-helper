@@ -415,10 +415,8 @@ fn build_label_tokens(labels: &[LabelItem]) -> TokenStream2 {
         return quote! {};
     }
 
-    let label_pairs: Vec<TokenStream2> = labels
-        .iter()
-        .map(|label| label.to_token_stream())
-        .collect();
+    let label_pairs: Vec<TokenStream2> =
+        labels.iter().map(|label| label.to_token_stream()).collect();
 
     quote! { , #(#label_pairs),* }
 }
