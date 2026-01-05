@@ -9,6 +9,8 @@
       "bump-patch-for-minor-pre-major": true
     }
   },
+  "pull-request-title-pattern": "chore: release ${component} ${version}",
+  "include-v-in-tag": true,
   "separate-pull-requests": false,
   "changelog-sections": [
     { "type": "feat", "section": "Features" },
