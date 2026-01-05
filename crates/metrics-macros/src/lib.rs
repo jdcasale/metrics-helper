@@ -59,6 +59,48 @@
 //! db_queries_total{table="users", operation="select", tenant_id="acme-corp"} 1
 //! ```
 //!
+//! ## Dynamic Labels (from struct fields)
+//!
+//! Use dot notation (`param.field`) to capture struct fields as labels.
+//! The field must implement `Display`:
+//!
+//! ```ignore
+//! struct Request {
+//!     method: String,
+//!     path: String,
+//!     user_id: u64,
+//! }
+//!
+//! #[instrument_metrics(
+//!     counter = "http_requests_total",
+//!     labels(
+//!         service = "api",   // static label
+//!         request.method,    // captures request.method as "method" label
+//!         request.path,      // captures request.path as "path" label
+//!     ),
+//! )]
+//! fn handle_request(request: &Request) {
+//!     // Metrics will include: service="api", method=<value>, path=<value>
+//! }
+//! ```
+//!
+//! You can also specify an explicit key name:
+//!
+//! ```ignore
+//! #[instrument_metrics(
+//!     counter = "requests_total",
+//!     labels(http_method = request.method),  // key is "http_method", value is request.method
+//! )]
+//! fn handle(request: &Request) { }
+//! ```
+//!
+//! Nested field access is also supported:
+//!
+//! ```ignore
+//! #[instrument_metrics(counter = "calls_total", labels(ctx.request.method))]
+//! fn process(ctx: &Context) { }
+//! ```
+//!
 //! # Feature Gating
 //!
 //! All metric recording is wrapped in `#[cfg(feature = "metrics")]`, providing
@@ -68,22 +110,104 @@ use darling::ast::NestedMeta;
 use darling::{Error, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
-use syn::{parse_macro_input, ItemFn, ReturnType};
+use quote::{quote, ToTokens};
+use syn::parse::{Parse, ParseStream, Parser};
+use syn::punctuated::Punctuated;
+use syn::{parse_macro_input, ItemFn, ReturnType, Token};
 
-/// Configuration for a single label
-#[derive(Debug, Clone)]
-struct Label {
+#[derive(Debug)]
+enum LabelValue {
+    /// Static string value: `method = "sync"`
+    Static(String),
+    /// Dynamic value from an expression: `request.method` or just `method`
+    /// The expression will have `.to_string()` called on it
+    Dynamic(syn::Expr),
+}
+
+/// A single label item parsed from the labels(...) block
+/// Supports:
+/// - `key = "value"` - static label
+/// - `key = expr` - dynamic label with explicit key
+/// - `method` - dynamic label from variable (key = variable name)
+/// - `request.method` - dynamic label from field (key = field name)
+struct LabelItem {
     key: String,
     value: LabelValue,
 }
 
-#[derive(Debug, Clone)]
-enum LabelValue {
-    /// Static string value: `method = "sync"`
-    Static(String),
-    /// Dynamic value from function argument: `node_id` (uses Display)
-    Dynamic(String),
+impl Parse for LabelItem {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        // Try to parse as `key = value` first
+        if input.peek(syn::Ident) && input.peek2(Token![=]) {
+            let key: syn::Ident = input.parse()?;
+            let _: Token![=] = input.parse()?;
+            let value: syn::Expr = input.parse()?;
+
+            // Check if it's a string literal (static label)
+            if let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(s),
+                ..
+            }) = &value
+            {
+                return Ok(LabelItem {
+                    key: key.to_string(),
+                    value: LabelValue::Static(s.value()),
+                });
+            }
+
+            // Otherwise it's a dynamic expression
+            return Ok(LabelItem {
+                key: key.to_string(),
+                value: LabelValue::Dynamic(value),
+            });
+        }
+
+        // Otherwise parse as an expression (path or field access)
+        let expr: syn::Expr = input.parse()?;
+
+        match &expr {
+            // Simple path like `method`
+            syn::Expr::Path(path) => {
+                let key = path
+                    .path
+                    .get_ident()
+                    .map(|i| i.to_string())
+                    .ok_or_else(|| {
+                        syn::Error::new_spanned(&expr, "expected simple identifier for label")
+                    })?;
+                Ok(LabelItem {
+                    key,
+                    value: LabelValue::Dynamic(expr),
+                })
+            }
+            // Field access like `request.method`
+            syn::Expr::Field(field) => {
+                let key = field.member.to_token_stream().to_string();
+                Ok(LabelItem {
+                    key,
+                    value: LabelValue::Dynamic(expr),
+                })
+            }
+            _ => Err(syn::Error::new_spanned(
+                &expr,
+                "expected identifier, field access (e.g., request.method), or key = value",
+            )),
+        }
+    }
+}
+
+impl LabelItem {
+    fn to_token_stream(&self) -> proc_macro2::TokenStream {
+        let key = &self.key;
+        match &self.value {
+            LabelValue::Static(value) => {
+                quote! { #key => #value }
+            }
+            LabelValue::Dynamic(expr) => {
+                quote! { #key => (#expr).to_string() }
+            }
+        }
+    }
 }
 
 /// Parsed attributes for the instrument_metrics macro
@@ -131,7 +255,7 @@ struct InstrumentMetricsArgs {
 ///
 /// # Labels
 ///
-/// Labels support two syntaxes:
+/// Labels support multiple syntaxes:
 ///
 /// ## Static Labels
 /// Use `key = "value"` for fixed label values:
@@ -150,9 +274,21 @@ struct InstrumentMetricsArgs {
 /// fn handle(method: &str, user_id: u64, payload: Bytes) { }
 /// ```
 ///
-/// You can mix both styles:
+/// ## Dynamic Labels (from struct fields)
+/// Use dot notation to capture struct field values:
 /// ```ignore
-/// labels(service = "api", method, tenant_id)
+/// #[instrument_metrics(
+///     counter = "requests_total",
+///     labels(request.method, request.path),  // captures struct fields
+/// )]
+/// fn handle(request: &Request) { }
+/// ```
+///
+/// You can also use an explicit key: `labels(http_method = request.method)`
+///
+/// You can mix all styles:
+/// ```ignore
+/// labels(service = "api", method, request.path)
 /// ```
 ///
 /// # Feature Gating
@@ -257,88 +393,31 @@ fn instrument_metrics_impl(
     })
 }
 
-fn parse_labels_from_meta(attr_args: &[NestedMeta]) -> Result<Vec<Label>, Error> {
-    let mut labels = Vec::new();
-
+fn parse_labels_from_meta(attr_args: &[NestedMeta]) -> Result<Vec<LabelItem>, Error> {
     for meta in attr_args {
         if let NestedMeta::Meta(syn::Meta::List(list)) = meta {
             if list.path.is_ident("labels") {
-                // Parse the labels(...) content
-                let nested = NestedMeta::parse_meta_list(list.tokens.clone())?;
-                for label_meta in nested {
-                    match label_meta {
-                        NestedMeta::Meta(syn::Meta::NameValue(nv)) => {
-                            // Static label: key = "value"
-                            let key =
-                                nv.path.get_ident().map(|i| i.to_string()).ok_or_else(|| {
-                                    Error::custom("expected simple identifier for label key")
-                                })?;
-
-                            let value = match &nv.value {
-                                syn::Expr::Lit(expr_lit) => match &expr_lit.lit {
-                                    syn::Lit::Str(s) => s.value(),
-                                    _ => {
-                                        return Err(Error::custom(
-                                            "expected string literal for label value",
-                                        ))
-                                    }
-                                },
-                                _ => {
-                                    return Err(Error::custom(
-                                        "expected string literal for label value",
-                                    ))
-                                }
-                            };
-
-                            labels.push(Label {
-                                key,
-                                value: LabelValue::Static(value),
-                            });
-                        }
-                        NestedMeta::Meta(syn::Meta::Path(path)) => {
-                            // Dynamic label: just the identifier name
-                            let key = path.get_ident().map(|i| i.to_string()).ok_or_else(|| {
-                                Error::custom("expected simple identifier for dynamic label")
-                            })?;
-
-                            labels.push(Label {
-                                key: key.clone(),
-                                value: LabelValue::Dynamic(key),
-                            });
-                        }
-                        _ => {
-                            return Err(Error::custom(
-                                "expected `key = \"value\"` or `key` for labels",
-                            ))
-                        }
-                    }
-                }
+                // Parse the labels(...) content as comma-separated LabelItems
+                let parser = Punctuated::<LabelItem, Token![,]>::parse_terminated;
+                let items = parser
+                    .parse2(list.tokens.clone())
+                    .map_err(|e: syn::Error| Error::custom(e.to_string()))?;
+                return Ok(items.into_iter().collect());
             }
         }
     }
 
-    Ok(labels)
+    Ok(Vec::new())
 }
 
-fn build_label_tokens(labels: &[Label]) -> TokenStream2 {
+fn build_label_tokens(labels: &[LabelItem]) -> TokenStream2 {
     if labels.is_empty() {
         return quote! {};
     }
 
     let label_pairs: Vec<TokenStream2> = labels
         .iter()
-        .map(|label| {
-            let key = &label.key;
-            match &label.value {
-                LabelValue::Static(value) => {
-                    quote! { #key => #value }
-                }
-                LabelValue::Dynamic(var_name) => {
-                    let var_ident = syn::Ident::new(var_name, proc_macro2::Span::call_site());
-                    quote! { #key => #var_ident.to_string() }
-                }
-            }
-        })
+        .map(|label| label.to_token_stream())
         .collect();
 
     quote! { , #(#label_pairs),* }
