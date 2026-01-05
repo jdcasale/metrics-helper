@@ -38,19 +38,13 @@ async fn async_with_timing() -> String {
 // ============================================================================
 
 /// Test: Error counter on function returning Result (Ok path)
-#[instrument_metrics(
-    counter = "result_calls_total",
-    error_counter = "result_errors_total"
-)]
+#[instrument_metrics(counter = "result_calls_total", error_counter = "result_errors_total")]
 fn sync_result_ok() -> Result<i32, &'static str> {
     Ok(42)
 }
 
 /// Test: Error counter on function returning Result (Err path)
-#[instrument_metrics(
-    counter = "result_calls_total",
-    error_counter = "result_errors_total"
-)]
+#[instrument_metrics(counter = "result_calls_total", error_counter = "result_errors_total")]
 fn sync_result_err() -> Result<i32, &'static str> {
     Err("something went wrong")
 }
@@ -69,10 +63,7 @@ async fn async_result() -> Result<String, std::io::Error> {
 // ============================================================================
 
 /// Test: Single static label
-#[instrument_metrics(
-    counter = "labeled_calls_total",
-    labels(service = "test")
-)]
+#[instrument_metrics(counter = "labeled_calls_total", labels(service = "test"))]
 fn single_static_label() {}
 
 /// Test: Multiple static labels
@@ -87,28 +78,19 @@ fn multiple_static_labels() {}
 // ============================================================================
 
 /// Test: Single dynamic label from function parameter
-#[instrument_metrics(
-    counter = "dynamic_calls_total",
-    labels(method)
-)]
+#[instrument_metrics(counter = "dynamic_calls_total", labels(method))]
 fn single_dynamic_label(method: &str) -> &str {
     method
 }
 
 /// Test: Multiple dynamic labels from function parameters
-#[instrument_metrics(
-    counter = "multi_dynamic_calls_total",
-    labels(operation, tenant_id)
-)]
+#[instrument_metrics(counter = "multi_dynamic_calls_total", labels(operation, tenant_id))]
 fn multiple_dynamic_labels(operation: &str, tenant_id: &str) {
     let _ = (operation, tenant_id);
 }
 
 /// Test: Dynamic label with numeric type (must implement Display)
-#[instrument_metrics(
-    counter = "numeric_label_calls_total",
-    labels(user_id)
-)]
+#[instrument_metrics(counter = "numeric_label_calls_total", labels(user_id))]
 fn dynamic_label_numeric(user_id: u64) -> u64 {
     user_id
 }
@@ -155,10 +137,7 @@ fn empty_labels() {}
 struct MyService;
 
 impl MyService {
-    #[instrument_metrics(
-        counter = "service_method_calls_total",
-        labels(action = "process")
-    )]
+    #[instrument_metrics(counter = "service_method_calls_total", labels(action = "process"))]
     fn process(&self) -> bool {
         true
     }

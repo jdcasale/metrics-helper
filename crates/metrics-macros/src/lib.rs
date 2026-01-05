@@ -269,11 +269,8 @@ fn parse_labels_from_meta(attr_args: &[NestedMeta]) -> Result<Vec<Label>, Error>
                     match label_meta {
                         NestedMeta::Meta(syn::Meta::NameValue(nv)) => {
                             // Static label: key = "value"
-                            let key = nv
-                                .path
-                                .get_ident()
-                                .map(|i| i.to_string())
-                                .ok_or_else(|| {
+                            let key =
+                                nv.path.get_ident().map(|i| i.to_string()).ok_or_else(|| {
                                     Error::custom("expected simple identifier for label key")
                                 })?;
 
@@ -300,10 +297,9 @@ fn parse_labels_from_meta(attr_args: &[NestedMeta]) -> Result<Vec<Label>, Error>
                         }
                         NestedMeta::Meta(syn::Meta::Path(path)) => {
                             // Dynamic label: just the identifier name
-                            let key =
-                                path.get_ident().map(|i| i.to_string()).ok_or_else(|| {
-                                    Error::custom("expected simple identifier for dynamic label")
-                                })?;
+                            let key = path.get_ident().map(|i| i.to_string()).ok_or_else(|| {
+                                Error::custom("expected simple identifier for dynamic label")
+                            })?;
 
                             labels.push(Label {
                                 key: key.clone(),
