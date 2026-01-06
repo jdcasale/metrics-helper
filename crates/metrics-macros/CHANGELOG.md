@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/jdcasale/metrics-helper/compare/metrics-helper-macros-v0.1.3...metrics-helper-macros-v0.1.4) (2026-01-06)
+
+
+### Features
+
+* Derive metric names from instrumented function names ([#10](https://github.com/jdcasale/metrics-helper/issues/10)) ([523904b](https://github.com/jdcasale/metrics-helper/commit/523904bd1619aae69e80cd43b8a04ae7bf775b53))
+
 ## [0.1.3](https://github.com/jdcasale/metrics-helper/compare/metrics-helper-macros-v0.1.2...metrics-helper-macros-v0.1.3) (2026-01-06)
 
 
