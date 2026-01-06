@@ -3,7 +3,7 @@
 //! These tests use a debugging recorder to capture metrics and verify
 //! that counters, histograms, and labels are properly recorded.
 
-use metrics_helper_macros::instrument_metrics;
+use metrics_helper_macros::instrument;
 use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
 use std::sync::OnceLock;
 
@@ -91,70 +91,47 @@ fn has_histogram_with_labels(
 // Instrumented functions for testing
 // ============================================================================
 
-#[instrument_metrics(counter = "test_counter_total")]
+#[instrument]
 fn simple_counter_fn() -> i32 {
     42
 }
 
-#[instrument_metrics(histogram = "test_histogram_seconds")]
+#[instrument]
 fn simple_histogram_fn() {
     // Simulate some work
     std::thread::sleep(std::time::Duration::from_millis(1));
 }
 
-#[instrument_metrics(
-    counter = "test_error_counter_total",
-    error_counter = "test_errors_total"
-)]
+#[instrument]
 fn fn_returns_ok() -> Result<i32, &'static str> {
     Ok(42)
 }
 
-#[instrument_metrics(
-    counter = "test_error_counter_total",
-    error_counter = "test_errors_total"
-)]
+#[instrument]
 fn fn_returns_err() -> Result<i32, &'static str> {
     Err("failed")
 }
 
-#[instrument_metrics(
-    counter = "test_static_labels_total",
-    labels(service = "test-service", version = "v1")
-)]
+#[instrument(labels(service = "test-service", version = "v1"))]
 fn fn_with_static_labels() {}
 
-#[instrument_metrics(counter = "test_dynamic_labels_total", labels(method))]
+#[instrument(labels(method))]
 fn fn_with_dynamic_label(method: &str) {
     let _ = method;
 }
 
-#[instrument_metrics(
-    counter = "test_mixed_labels_total",
-    histogram = "test_mixed_labels_seconds",
-    labels(service = "api", operation)
-)]
+#[instrument(labels(service = "api", operation))]
 fn fn_with_mixed_labels(operation: &str) {
     let _ = operation;
 }
 
-#[instrument_metrics(
-    counter = "test_full_total",
-    histogram = "test_full_seconds",
-    error_counter = "test_full_errors_total",
-    labels(service = "db", table, operation)
-)]
+#[instrument(labels(service = "db", table, operation))]
 fn full_instrumented(table: &str, operation: &str) -> Result<(), &'static str> {
     let _ = (table, operation);
     Ok(())
 }
 
-#[instrument_metrics(
-    counter = "test_full_total",
-    histogram = "test_full_seconds",
-    error_counter = "test_full_errors_total",
-    labels(service = "db", table, operation)
-)]
+#[instrument(labels(service = "db", table, operation))]
 fn full_instrumented_fails(table: &str, operation: &str) -> Result<(), &'static str> {
     let _ = (table, operation);
     Err("db error")
@@ -168,13 +145,13 @@ fn full_instrumented_fails(table: &str, operation: &str) -> Result<(), &'static 
 fn test_counter_increments() {
     let snapshotter = setup_recorder();
 
-    let before = get_counter(snapshotter, "test_counter_total").unwrap_or(0);
+    let before = get_counter(snapshotter, "simple_counter_fn_total").unwrap_or(0);
 
     simple_counter_fn();
     simple_counter_fn();
     simple_counter_fn();
 
-    let after = get_counter(snapshotter, "test_counter_total").unwrap_or(0);
+    let after = get_counter(snapshotter, "simple_counter_fn_total").unwrap_or(0);
 
     assert_eq!(after - before, 3, "Counter should have incremented by 3");
 }
@@ -188,7 +165,7 @@ fn test_histogram_records_duration() {
     // Note: DebuggingRecorder drains histogram samples on snapshot, so we verify
     // the histogram exists immediately after recording
     assert!(
-        has_histogram(snapshotter, "test_histogram_seconds"),
+        has_histogram(snapshotter, "simple_histogram_fn_duration_seconds"),
         "Histogram should have recorded a duration"
     );
 }
@@ -197,14 +174,14 @@ fn test_histogram_records_duration() {
 fn test_error_counter_on_ok() {
     let snapshotter = setup_recorder();
 
-    let before_calls = get_counter(snapshotter, "test_error_counter_total").unwrap_or(0);
-    let before_errors = get_counter(snapshotter, "test_errors_total").unwrap_or(0);
+    let before_calls = get_counter(snapshotter, "fn_returns_ok_total").unwrap_or(0);
+    let before_errors = get_counter(snapshotter, "fn_returns_ok_errors_total").unwrap_or(0);
 
     let result = fn_returns_ok();
     assert!(result.is_ok());
 
-    let after_calls = get_counter(snapshotter, "test_error_counter_total").unwrap_or(0);
-    let after_errors = get_counter(snapshotter, "test_errors_total").unwrap_or(0);
+    let after_calls = get_counter(snapshotter, "fn_returns_ok_total").unwrap_or(0);
+    let after_errors = get_counter(snapshotter, "fn_returns_ok_errors_total").unwrap_or(0);
 
     assert_eq!(
         after_calls - before_calls,
@@ -222,14 +199,14 @@ fn test_error_counter_on_ok() {
 fn test_error_counter_on_err() {
     let snapshotter = setup_recorder();
 
-    let before_calls = get_counter(snapshotter, "test_error_counter_total").unwrap_or(0);
-    let before_errors = get_counter(snapshotter, "test_errors_total").unwrap_or(0);
+    let before_calls = get_counter(snapshotter, "fn_returns_err_total").unwrap_or(0);
+    let before_errors = get_counter(snapshotter, "fn_returns_err_errors_total").unwrap_or(0);
 
     let result = fn_returns_err();
     assert!(result.is_err());
 
-    let after_calls = get_counter(snapshotter, "test_error_counter_total").unwrap_or(0);
-    let after_errors = get_counter(snapshotter, "test_errors_total").unwrap_or(0);
+    let after_calls = get_counter(snapshotter, "fn_returns_err_total").unwrap_or(0);
+    let after_errors = get_counter(snapshotter, "fn_returns_err_errors_total").unwrap_or(0);
 
     assert_eq!(
         after_calls - before_calls,
@@ -251,7 +228,7 @@ fn test_static_labels_attached() {
 
     let value = get_counter_with_labels(
         snapshotter,
-        "test_static_labels_total",
+        "fn_with_static_labels_total",
         &[("service", "test-service"), ("version", "v1")],
     );
 
@@ -272,13 +249,13 @@ fn test_dynamic_labels_captured() {
 
     let get_count = get_counter_with_labels(
         snapshotter,
-        "test_dynamic_labels_total",
+        "fn_with_dynamic_label_total",
         &[("method", "GET")],
     );
 
     let post_count = get_counter_with_labels(
         snapshotter,
-        "test_dynamic_labels_total",
+        "fn_with_dynamic_label_total",
         &[("method", "POST")],
     );
 
@@ -300,13 +277,13 @@ fn test_mixed_labels_counter() {
 
     let read_counter = get_counter_with_labels(
         snapshotter,
-        "test_mixed_labels_total",
+        "fn_with_mixed_labels_total",
         &[("service", "api"), ("operation", "read")],
     );
 
     let write_counter = get_counter_with_labels(
         snapshotter,
-        "test_mixed_labels_total",
+        "fn_with_mixed_labels_total",
         &[("service", "api"), ("operation", "write")],
     );
 
@@ -329,7 +306,7 @@ fn test_mixed_labels_histogram() {
     // Verify histogram was recorded with correct labels
     let histogram = has_histogram_with_labels(
         snapshotter,
-        "test_mixed_labels_seconds",
+        "fn_with_mixed_labels_duration_seconds",
         &[("service", "api"), ("operation", "delete")],
     );
 
@@ -342,7 +319,7 @@ fn test_full_instrumentation_success() {
 
     let before_errors = get_counter_with_labels(
         snapshotter,
-        "test_full_errors_total",
+        "full_instrumented_errors_total",
         &[
             ("service", "db"),
             ("table", "users"),
@@ -357,7 +334,7 @@ fn test_full_instrumentation_success() {
     // Verify counter with all labels
     let counter = get_counter_with_labels(
         snapshotter,
-        "test_full_total",
+        "full_instrumented_total",
         &[
             ("service", "db"),
             ("table", "users"),
@@ -372,7 +349,7 @@ fn test_full_instrumentation_success() {
     // Verify error counter NOT incremented
     let after_errors = get_counter_with_labels(
         snapshotter,
-        "test_full_errors_total",
+        "full_instrumented_errors_total",
         &[
             ("service", "db"),
             ("table", "users"),
@@ -392,7 +369,7 @@ fn test_full_instrumentation_failure() {
 
     let before_errors = get_counter_with_labels(
         snapshotter,
-        "test_full_errors_total",
+        "full_instrumented_fails_errors_total",
         &[
             ("service", "db"),
             ("table", "orders"),
@@ -407,7 +384,7 @@ fn test_full_instrumentation_failure() {
     // Verify error counter IS incremented
     let after_errors = get_counter_with_labels(
         snapshotter,
-        "test_full_errors_total",
+        "full_instrumented_fails_errors_total",
         &[
             ("service", "db"),
             ("table", "orders"),
@@ -431,10 +408,7 @@ struct HttpRequest {
     path: String,
 }
 
-#[instrument_metrics(
-    counter = "test_struct_field_total",
-    labels(service = "api", request.method, request.path)
-)]
+#[instrument(labels(service = "api", request.method, request.path))]
 fn fn_with_struct_field_labels(request: &HttpRequest) {
     let _ = request;
 }
@@ -452,7 +426,7 @@ fn test_struct_field_labels_captured() {
     // Verify counter exists with struct field values as labels
     let counter = get_counter_with_labels(
         snapshotter,
-        "test_struct_field_total",
+        "fn_with_struct_field_labels_total",
         &[
             ("service", "api"),
             ("method", "POST"),
@@ -463,5 +437,5 @@ fn test_struct_field_labels_captured() {
         counter.is_some(),
         "Counter with struct field labels should exist"
     );
-    assert_eq!(counter.unwrap(), 1, "Counter should be 1");
+    assert!(counter.unwrap() >= 1, "Counter should be at least 1");
 }

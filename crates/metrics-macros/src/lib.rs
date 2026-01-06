@@ -1,18 +1,31 @@
 //! Proc-macros for idiomatic Prometheus metrics instrumentation
 //!
-//! Provides the `#[instrument_metrics]` attribute macro for ergonomic
+//! Provides the `#[instrument]` attribute macro for ergonomic
 //! function instrumentation with counters, histograms, and error tracking.
 //!
 //! # Quick Start
 //!
-//! ```ignore
-//! use metrics_helper_macros::instrument_metrics;
+//! Metric names are automatically derived from the function name:
 //!
-//! #[instrument_metrics(
-//!     counter = "http_requests_total",
-//!     histogram = "http_request_duration_seconds",
-//!     error_counter = "http_request_errors_total",
-//!     labels(endpoint = "/users", method),  // static + dynamic label
+//! ```ignore
+//! use metrics_helper_macros::instrument;
+//!
+//! // Auto-generates metrics:
+//! // - counter: "get_users_total"
+//! // - histogram: "get_users_duration_seconds"
+//! // - error_counter: "get_users_errors_total"
+//! #[instrument]
+//! async fn get_users(method: &str) -> Result<Vec<User>, ApiError> {
+//!     // Your code here...
+//! }
+//! ```
+//!
+//! You can also override specific metric names:
+//!
+//! ```ignore
+//! #[instrument(
+//!     counter = "http_requests_total",  // Override counter name
+//!     labels(endpoint = "/users", method),
 //! )]
 //! async fn get_users(method: &str) -> Result<Vec<User>, ApiError> {
 //!     // Your code here...
@@ -28,10 +41,7 @@
 //! Use `key = "value"` syntax for labels with fixed values:
 //!
 //! ```ignore
-//! #[instrument_metrics(
-//!     counter = "requests_total",
-//!     labels(service = "api", version = "v1"),
-//! )]
+//! #[instrument(labels(service = "api", version = "v1"))]
 //! fn handle() { }
 //! ```
 //!
@@ -41,14 +51,11 @@
 //! The parameter must implement `Display`:
 //!
 //! ```ignore
-//! #[instrument_metrics(
-//!     counter = "db_queries_total",
-//!     labels(
-//!         table = "users",  // static: always "users"
-//!         operation,        // dynamic: captured from function param
-//!         tenant_id,        // dynamic: captured from function param
-//!     ),
-//! )]
+//! #[instrument(labels(
+//!     table = "users",  // static: always "users"
+//!     operation,        // dynamic: captured from function param
+//!     tenant_id,        // dynamic: captured from function param
+//! ))]
 //! async fn query(operation: &str, tenant_id: &str, limit: usize) -> Result<Data, Error> {
 //!     // Metrics will include: table="users", operation=<value>, tenant_id=<value>
 //! }
@@ -56,7 +63,7 @@
 //!
 //! This generates metrics like:
 //! ```text
-//! db_queries_total{table="users", operation="select", tenant_id="acme-corp"} 1
+//! query_total{table="users", operation="select", tenant_id="acme-corp"} 1
 //! ```
 //!
 //! ## Dynamic Labels (from struct fields)
@@ -71,14 +78,11 @@
 //!     user_id: u64,
 //! }
 //!
-//! #[instrument_metrics(
-//!     counter = "http_requests_total",
-//!     labels(
-//!         service = "api",   // static label
-//!         request.method,    // captures request.method as "method" label
-//!         request.path,      // captures request.path as "path" label
-//!     ),
-//! )]
+//! #[instrument(labels(
+//!     service = "api",   // static label
+//!     request.method,    // captures request.method as "method" label
+//!     request.path,      // captures request.path as "path" label
+//! ))]
 //! fn handle_request(request: &Request) {
 //!     // Metrics will include: service="api", method=<value>, path=<value>
 //! }
@@ -87,17 +91,14 @@
 //! You can also specify an explicit key name:
 //!
 //! ```ignore
-//! #[instrument_metrics(
-//!     counter = "requests_total",
-//!     labels(http_method = request.method),  // key is "http_method", value is request.method
-//! )]
+//! #[instrument(labels(http_method = request.method))]
 //! fn handle(request: &Request) { }
 //! ```
 //!
 //! Nested field access is also supported:
 //!
 //! ```ignore
-//! #[instrument_metrics(counter = "calls_total", labels(ctx.request.method))]
+//! #[instrument(labels(ctx.request.method))]
 //! fn process(ctx: &Context) { }
 //! ```
 //!
@@ -235,19 +236,19 @@ impl LabelItem {
     }
 }
 
-/// Parsed attributes for the instrument_metrics macro
+/// Parsed attributes for the instrument macro
 #[derive(Debug, FromMeta)]
 #[darling(allow_unknown_fields)]
-struct InstrumentMetricsArgs {
-    /// Counter to increment on each call
+struct InstrumentArgs {
+    /// Counter name override (default: `{fn_name}_total`)
     #[darling(default)]
     counter: Option<String>,
 
-    /// Histogram to record duration
+    /// Histogram name override (default: `{fn_name}_duration_seconds`)
     #[darling(default)]
     histogram: Option<String>,
 
-    /// Counter to increment on error (Result::Err)
+    /// Error counter name override (default: `{fn_name}_errors_total`)
     #[darling(default)]
     error_counter: Option<String>,
     // Note: labels are parsed directly from meta in parse_labels_from_meta()
@@ -256,27 +257,39 @@ struct InstrumentMetricsArgs {
 
 /// Attribute macro for instrumenting functions with metrics.
 ///
+/// Metric names are automatically derived from the function name:
+/// - Counter: `{fn_name}_total`
+/// - Histogram: `{fn_name}_duration_seconds`
+/// - Error counter: `{fn_name}_errors_total`
+///
 /// # Usage
 ///
 /// ```ignore
-/// #[instrument_metrics(
-///     counter = "sync_requests_total",
-///     histogram = "sync_request_duration_seconds",
-///     error_counter = "sync_errors_total",
-///     labels(method = "sync"),
-/// )]
+/// // Simple usage - all metrics auto-derived from function name
+/// #[instrument]
+/// async fn sync_data() -> Result<(), Error> {
+///     // Generates: sync_data_total, sync_data_duration_seconds, sync_data_errors_total
+/// }
+///
+/// // With labels
+/// #[instrument(labels(method = "sync"))]
 /// async fn sync(&self, request: Request<SyncRequest>) -> Result<Response<SyncResponse>, Status> {
 ///     // ...
+/// }
+///
+/// // Override specific metric names
+/// #[instrument(counter = "custom_requests_total")]
+/// fn handle_request() {
+///     // Uses custom_requests_total but auto-derives histogram name
 /// }
 /// ```
 ///
 /// # Attributes
 ///
-/// - `counter`: Name of counter to increment on each call
-/// - `histogram`: Name of histogram to record call duration (seconds)
-/// - `error_counter`: Name of counter to increment when function returns `Err`
-///   (only works for functions returning `Result`)
-/// - `labels(...)`: Labels to attach to all metrics (see below)
+/// - `counter`: Override counter name (default: `{fn_name}_total`)
+/// - `histogram`: Override histogram name (default: `{fn_name}_duration_seconds`)
+/// - `error_counter`: Override error counter name (default: `{fn_name}_errors_total`)
+/// - `labels(...)`: Labels to attach to all metrics
 ///
 /// # Labels
 ///
@@ -292,20 +305,14 @@ struct InstrumentMetricsArgs {
 /// Use just the parameter name to capture its value at runtime.
 /// The parameter must implement `Display`:
 /// ```ignore
-/// #[instrument_metrics(
-///     counter = "requests_total",
-///     labels(method, user_id),  // captures function params
-/// )]
+/// #[instrument(labels(method, user_id))]
 /// fn handle(method: &str, user_id: u64, payload: Bytes) { }
 /// ```
 ///
 /// ## Dynamic Labels (from struct fields)
 /// Use dot notation to capture struct field values:
 /// ```ignore
-/// #[instrument_metrics(
-///     counter = "requests_total",
-///     labels(request.method, request.path),  // captures struct fields
-/// )]
+/// #[instrument(labels(request.method, request.path))]
 /// fn handle(request: &Request) { }
 /// ```
 ///
@@ -321,25 +328,22 @@ struct InstrumentMetricsArgs {
 /// All metric recording is wrapped in `#[cfg(feature = "metrics")]` so there's
 /// zero overhead when compiled without the metrics feature.
 #[proc_macro_attribute]
-pub fn instrument_metrics(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn instrument(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attr_args = match NestedMeta::parse_meta_list(attr.into()) {
         Ok(v) => v,
         Err(e) => return TokenStream::from(Error::from(e).write_errors()),
     };
     let input_fn = parse_macro_input!(item as ItemFn);
 
-    match instrument_metrics_impl(attr_args, input_fn) {
+    match instrument_impl(attr_args, input_fn) {
         Ok(tokens) => tokens.into(),
         Err(err) => err.write_errors().into(),
     }
 }
 
-fn instrument_metrics_impl(
-    attr_args: Vec<NestedMeta>,
-    input_fn: ItemFn,
-) -> Result<TokenStream2, Error> {
+fn instrument_impl(attr_args: Vec<NestedMeta>, input_fn: ItemFn) -> Result<TokenStream2, Error> {
     // Parse attributes using darling
-    let args = InstrumentMetricsArgs::from_list(&attr_args)?;
+    let args = InstrumentArgs::from_list(&attr_args)?;
 
     // Parse labels from the nested meta
     let labels = parse_labels_from_meta(&attr_args)?;
@@ -350,9 +354,21 @@ fn instrument_metrics_impl(
     let sig = &input_fn.sig;
     let block = &input_fn.block;
     let is_async = sig.asyncness.is_some();
+    let fn_name = sig.ident.to_string();
 
     // Check if return type is Result for error tracking
     let returns_result = matches!(&sig.output, ReturnType::Type(_, ty) if is_result_type(ty));
+
+    // Derive metric names from function name (with optional overrides)
+    let counter_name = args
+        .counter
+        .unwrap_or_else(|| format!("{}_total", fn_name));
+    let histogram_name = args
+        .histogram
+        .unwrap_or_else(|| format!("{}_duration_seconds", fn_name));
+    let error_counter_name = args
+        .error_counter
+        .unwrap_or_else(|| format!("{}_errors_total", fn_name));
 
     // Build label captures (evaluated upfront before async block or function body)
     // This ensures we capture values before they might be moved/consumed
@@ -362,56 +378,47 @@ fn instrument_metrics_impl(
     let label_tokens = build_label_tokens(&labels);
 
     // Build the counter increment code
-    let counter_code = args.counter.as_ref().map(|name| {
-        quote! {
-            #[cfg(feature = "metrics")]
-            ::metrics::counter!(#name #label_tokens).increment(1);
-        }
-    });
+    let counter_code = quote! {
+        #[cfg(feature = "metrics")]
+        ::metrics::counter!(#counter_name #label_tokens).increment(1);
+    };
 
     // Build the histogram recording code
-    let histogram_code = args.histogram.as_ref().map(|name| {
-        quote! {
-            #[cfg(feature = "metrics")]
-            ::metrics::histogram!(#name #label_tokens).record(__metrics_start.elapsed().as_secs_f64());
-        }
-    });
+    let histogram_code = quote! {
+        #[cfg(feature = "metrics")]
+        ::metrics::histogram!(#histogram_name #label_tokens).record(__metrics_start.elapsed().as_secs_f64());
+    };
 
     // Build the error counter code (only if returns Result)
     let error_counter_code = if returns_result {
-        args.error_counter.as_ref().map(|name| {
-            quote! {
-                #[cfg(feature = "metrics")]
-                if __metrics_result.is_err() {
-                    ::metrics::counter!(#name #label_tokens).increment(1);
-                }
+        Some(quote! {
+            #[cfg(feature = "metrics")]
+            if __metrics_result.is_err() {
+                ::metrics::counter!(#error_counter_name #label_tokens).increment(1);
             }
         })
     } else {
         None
     };
 
-    // Determine if we need timing
-    let needs_timing = args.histogram.is_some();
-
     // Build the instrumented function body
     let instrumented_body = if is_async {
         build_async_body(
             block,
             label_captures,
-            counter_code,
-            histogram_code,
+            Some(counter_code),
+            Some(histogram_code),
             error_counter_code,
-            needs_timing,
+            true, // always need timing now
         )
     } else {
         build_sync_body(
             block,
             label_captures,
-            counter_code,
-            histogram_code,
+            Some(counter_code),
+            Some(histogram_code),
             error_counter_code,
-            needs_timing,
+            true, // always need timing now
         )
     };
 
