@@ -1,34 +1,34 @@
-//! Integration tests for the instrument_metrics macro.
+//! Integration tests for the instrument macro.
 //!
 //! These tests verify that the macro generates valid, compilable code
 //! for various function signatures and configurations.
 
-use metrics_helper_macros::instrument_metrics;
+use metrics_helper_macros::instrument;
 
 // ============================================================================
 // Basic Usage Tests
 // ============================================================================
 
-/// Test: Counter only on a sync function
-#[instrument_metrics(counter = "basic_sync_calls_total")]
+/// Test: Simple sync function with auto-derived metric names
+#[instrument]
 fn basic_sync_counter() -> i32 {
     42
 }
 
-/// Test: Counter only on an async function
-#[instrument_metrics(counter = "basic_async_calls_total")]
+/// Test: Simple async function with auto-derived metric names
+#[instrument]
 async fn basic_async_counter() -> i32 {
     42
 }
 
-/// Test: Histogram (timing) on a sync function
-#[instrument_metrics(histogram = "sync_duration_seconds")]
+/// Test: Sync function with auto-derived metrics
+#[instrument]
 fn sync_with_timing() -> String {
     "hello".to_string()
 }
 
-/// Test: Histogram (timing) on an async function
-#[instrument_metrics(histogram = "async_duration_seconds")]
+/// Test: Async function with auto-derived metrics
+#[instrument]
 async fn async_with_timing() -> String {
     "hello".to_string()
 }
@@ -38,22 +38,19 @@ async fn async_with_timing() -> String {
 // ============================================================================
 
 /// Test: Error counter on function returning Result (Ok path)
-#[instrument_metrics(counter = "result_calls_total", error_counter = "result_errors_total")]
+#[instrument]
 fn sync_result_ok() -> Result<i32, &'static str> {
     Ok(42)
 }
 
 /// Test: Error counter on function returning Result (Err path)
-#[instrument_metrics(counter = "result_calls_total", error_counter = "result_errors_total")]
+#[instrument]
 fn sync_result_err() -> Result<i32, &'static str> {
     Err("something went wrong")
 }
 
 /// Test: Async function with error counter
-#[instrument_metrics(
-    counter = "async_result_calls_total",
-    error_counter = "async_result_errors_total"
-)]
+#[instrument]
 async fn async_result() -> Result<String, std::io::Error> {
     Ok("success".to_string())
 }
@@ -63,14 +60,11 @@ async fn async_result() -> Result<String, std::io::Error> {
 // ============================================================================
 
 /// Test: Single static label
-#[instrument_metrics(counter = "labeled_calls_total", labels(service = "test"))]
+#[instrument(labels(service = "test"))]
 fn single_static_label() {}
 
 /// Test: Multiple static labels
-#[instrument_metrics(
-    counter = "multi_labeled_calls_total",
-    labels(service = "api", version = "v1", environment = "test")
-)]
+#[instrument(labels(service = "api", version = "v1", environment = "test"))]
 fn multiple_static_labels() {}
 
 // ============================================================================
@@ -78,19 +72,19 @@ fn multiple_static_labels() {}
 // ============================================================================
 
 /// Test: Single dynamic label from function parameter
-#[instrument_metrics(counter = "dynamic_calls_total", labels(method))]
+#[instrument(labels(method))]
 fn single_dynamic_label(method: &str) -> &str {
     method
 }
 
 /// Test: Multiple dynamic labels from function parameters
-#[instrument_metrics(counter = "multi_dynamic_calls_total", labels(operation, tenant_id))]
+#[instrument(labels(operation, tenant_id))]
 fn multiple_dynamic_labels(operation: &str, tenant_id: &str) {
     let _ = (operation, tenant_id);
 }
 
 /// Test: Dynamic label with numeric type (must implement Display)
-#[instrument_metrics(counter = "numeric_label_calls_total", labels(user_id))]
+#[instrument(labels(user_id))]
 fn dynamic_label_numeric(user_id: u64) -> u64 {
     user_id
 }
@@ -100,22 +94,13 @@ fn dynamic_label_numeric(user_id: u64) -> u64 {
 // ============================================================================
 
 /// Test: Mix of static and dynamic labels
-#[instrument_metrics(
-    counter = "mixed_labels_calls_total",
-    histogram = "mixed_labels_duration_seconds",
-    labels(service = "api", method, tenant_id)
-)]
+#[instrument(labels(service = "api", method, tenant_id))]
 fn mixed_labels(method: &str, tenant_id: &str, _payload: &[u8]) {
     let _ = (method, tenant_id);
 }
 
 /// Test: Full configuration with mixed labels on async Result function
-#[instrument_metrics(
-    counter = "full_config_calls_total",
-    histogram = "full_config_duration_seconds",
-    error_counter = "full_config_errors_total",
-    labels(service = "database", table = "users", operation)
-)]
+#[instrument(labels(service = "database", table = "users", operation))]
 async fn full_configuration(operation: &str) -> Result<Vec<String>, &'static str> {
     let _ = operation;
     Ok(vec!["user1".to_string(), "user2".to_string()])
@@ -134,54 +119,37 @@ struct Request {
 }
 
 /// Test: Single struct field as label
-#[instrument_metrics(counter = "struct_field_calls_total", labels(request.method))]
+#[instrument(labels(request.method))]
 fn single_struct_field_label(request: &Request) {
     let _ = request;
 }
 
 /// Test: Multiple struct fields as labels
-#[instrument_metrics(
-    counter = "multi_struct_field_calls_total",
-    labels(request.method, request.path)
-)]
+#[instrument(labels(request.method, request.path))]
 fn multiple_struct_field_labels(request: &Request) {
     let _ = request;
 }
 
 /// Test: Mix of struct field and static labels
-#[instrument_metrics(
-    counter = "mixed_struct_static_calls_total",
-    labels(service = "api", request.method, request.path)
-)]
+#[instrument(labels(service = "api", request.method, request.path))]
 fn mixed_struct_and_static_labels(request: &Request) {
     let _ = request;
 }
 
 /// Test: Mix of struct field and simple parameter labels
-#[instrument_metrics(
-    counter = "mixed_struct_param_calls_total",
-    labels(request.method, operation)
-)]
+#[instrument(labels(request.method, operation))]
 fn mixed_struct_and_param_labels(request: &Request, operation: &str) {
     let _ = (request, operation);
 }
 
 /// Test: Struct field with explicit key name
-#[instrument_metrics(
-    counter = "explicit_key_calls_total",
-    labels(http_method = request.method)
-)]
+#[instrument(labels(http_method = request.method))]
 fn explicit_key_for_struct_field(request: &Request) {
     let _ = request;
 }
 
 /// Test: Full configuration with struct field labels
-#[instrument_metrics(
-    counter = "full_struct_calls_total",
-    histogram = "full_struct_duration_seconds",
-    error_counter = "full_struct_errors_total",
-    labels(service = "api", request.method, request.path, request.user_id)
-)]
+#[instrument(labels(service = "api", request.method, request.path, request.user_id))]
 fn full_struct_configuration(request: &Request) -> Result<(), &'static str> {
     let _ = request;
     Ok(())
@@ -192,18 +160,14 @@ struct Nested {
     inner: Request,
 }
 
-#[instrument_metrics(counter = "nested_field_calls_total", labels(nested.inner.method))]
+#[instrument(labels(nested.inner.method))]
 fn nested_struct_field(nested: &Nested) {
     let _ = nested;
 }
 
 /// Test: Async function that consumes the struct (verifies borrow fix)
 /// Labels are captured upfront before the async block, so this compiles.
-#[instrument_metrics(
-    counter = "async_consume_calls_total",
-    histogram = "async_consume_duration_seconds",
-    labels(request.method, request.path)
-)]
+#[instrument(labels(request.method, request.path))]
 async fn async_consumes_struct(request: Request) -> String {
     // Simulate consuming the request by moving it
     let owned = request;
@@ -211,11 +175,7 @@ async fn async_consumes_struct(request: Request) -> String {
 }
 
 /// Test: Sync function that moves the struct (verifies borrow fix)
-#[instrument_metrics(
-    counter = "sync_consume_calls_total",
-    histogram = "sync_consume_duration_seconds",
-    labels(request.method)
-)]
+#[instrument(labels(request.method))]
 fn sync_consumes_struct(request: Request) -> String {
     let owned = request;
     owned.method
@@ -225,48 +185,58 @@ fn sync_consumes_struct(request: Request) -> String {
 // Edge Cases
 // ============================================================================
 
-/// Test: Function with no metrics attributes except labels (should still compile)
-#[instrument_metrics(labels(tag = "value"))]
+/// Test: Function with only labels (should still compile)
+#[instrument(labels(tag = "value"))]
 fn labels_only() {}
 
 /// Test: Empty labels list
-#[instrument_metrics(counter = "empty_labels_total", labels())]
+#[instrument(labels())]
 fn empty_labels() {}
 
 /// Test: Function with self parameter (method)
 struct MyService;
 
 impl MyService {
-    #[instrument_metrics(counter = "service_method_calls_total", labels(action = "process"))]
+    #[instrument(labels(action = "process"))]
     fn process(&self) -> bool {
         true
     }
 
-    #[instrument_metrics(
-        counter = "service_async_calls_total",
-        histogram = "service_async_duration_seconds"
-    )]
+    #[instrument]
     async fn async_process(&self) -> Result<(), &'static str> {
         Ok(())
     }
 }
 
 /// Test: Generic function
-#[instrument_metrics(counter = "generic_calls_total")]
+#[instrument]
 fn generic_function<T: std::fmt::Display>(value: T) -> String {
     value.to_string()
 }
 
 /// Test: Function with multiple generic parameters
-#[instrument_metrics(
-    counter = "multi_generic_calls_total",
-    labels(type_name = "conversion")
-)]
+#[instrument(labels(type_name = "conversion"))]
 fn multi_generic<T, U>(input: T) -> U
 where
     T: Into<U>,
 {
     input.into()
+}
+
+/// Test: Override specific metric names
+#[instrument(counter = "custom_counter_name")]
+fn with_custom_counter() -> i32 {
+    100
+}
+
+/// Test: Override all metric names
+#[instrument(
+    counter = "custom_total",
+    histogram = "custom_duration",
+    error_counter = "custom_errors"
+)]
+fn with_all_custom_names() -> Result<(), &'static str> {
+    Ok(())
 }
 
 // ============================================================================
