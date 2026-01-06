@@ -360,9 +360,7 @@ fn instrument_impl(attr_args: Vec<NestedMeta>, input_fn: ItemFn) -> Result<Token
     let returns_result = matches!(&sig.output, ReturnType::Type(_, ty) if is_result_type(ty));
 
     // Derive metric names from function name (with optional overrides)
-    let counter_name = args
-        .counter
-        .unwrap_or_else(|| format!("{}_total", fn_name));
+    let counter_name = args.counter.unwrap_or_else(|| format!("{}_total", fn_name));
     let histogram_name = args
         .histogram
         .unwrap_or_else(|| format!("{}_duration_seconds", fn_name));
