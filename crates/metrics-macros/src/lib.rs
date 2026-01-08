@@ -102,11 +102,6 @@
 //! fn process(ctx: &Context) { }
 //! ```
 //!
-//! # Feature Gating
-//!
-//! All metric recording is wrapped in `#[cfg(feature = "metrics")]`, providing
-//! zero overhead when compiled without the metrics feature enabled.
-
 use darling::ast::NestedMeta;
 use darling::{Error, FromMeta};
 use proc_macro::TokenStream;
@@ -322,11 +317,6 @@ struct InstrumentArgs {
 /// ```ignore
 /// labels(service = "api", method, request.path)
 /// ```
-///
-/// # Feature Gating
-///
-/// All metric recording is wrapped in `#[cfg(feature = "metrics")]` so there's
-/// zero overhead when compiled without the metrics feature.
 #[proc_macro_attribute]
 pub fn instrument(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attr_args = match NestedMeta::parse_meta_list(attr.into()) {
@@ -377,20 +367,17 @@ fn instrument_impl(attr_args: Vec<NestedMeta>, input_fn: ItemFn) -> Result<Token
 
     // Build the counter increment code
     let counter_code = quote! {
-        #[cfg(feature = "metrics")]
         ::metrics::counter!(#counter_name #label_tokens).increment(1);
     };
 
     // Build the histogram recording code
     let histogram_code = quote! {
-        #[cfg(feature = "metrics")]
         ::metrics::histogram!(#histogram_name #label_tokens).record(__metrics_start.elapsed().as_secs_f64());
     };
 
     // Build the error counter code (only if returns Result)
     let error_counter_code = if returns_result {
         Some(quote! {
-            #[cfg(feature = "metrics")]
             if __metrics_result.is_err() {
                 ::metrics::counter!(#error_counter_name #label_tokens).increment(1);
             }

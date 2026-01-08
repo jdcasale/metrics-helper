@@ -7,12 +7,11 @@ Proc-macros for idiomatic Prometheus metrics instrumentation in Rust.
 
 ## Features
 
-- **`#[instrument_metrics]`** - Attribute macro for automatic function instrumentation
+- **`#[instrument]`** - Attribute macro for automatic function instrumentation
 - **Counters** - Count function invocations
 - **Histograms** - Measure function duration
 - **Error counters** - Track errors for functions returning `Result`
 - **Labels** - Attach static or dynamic labels from function parameters
-- **Zero-cost** - All instrumentation compiles away when `metrics` feature is disabled
 
 ## Installation
 
@@ -20,9 +19,6 @@ Proc-macros for idiomatic Prometheus metrics instrumentation in Rust.
 [dependencies]
 metrics-helper-macros = "0.1"
 metrics = "0.24"
-
-[features]
-metrics = ["metrics-helper-macros/metrics"]
 ```
 
 ## Usage
@@ -30,9 +26,9 @@ metrics = ["metrics-helper-macros/metrics"]
 ### Basic Example
 
 ```rust
-use metrics_helper_macros::instrument_metrics;
+use metrics_helper_macros::instrument;
 
-#[instrument_metrics(
+#[instrument(
     counter = "db_queries_total",
     histogram = "db_query_duration_seconds",
     error_counter = "db_query_errors_total",
@@ -47,7 +43,7 @@ async fn query_database() -> Result<Data, DbError> {
 Labels can be **static** (fixed values) or **dynamic** (captured from function parameters):
 
 ```rust
-#[instrument_metrics(
+#[instrument(
     counter = "http_requests_total",
     histogram = "http_request_duration_seconds",
     labels(
@@ -80,29 +76,6 @@ http_request_duration_seconds{service="api", method="GET", endpoint="/users"} 0.
 
 - **Static**: `key = "value"` - Fixed string value
 - **Dynamic**: `key` - Captures the value of a function parameter with the same name (must implement `Display`)
-
-## Feature Gating
-
-All metric recording is wrapped in `#[cfg(feature = "metrics")]`:
-
-```rust
-// When metrics feature is disabled, this compiles to just:
-async fn my_function() -> Result<(), Error> {
-    // original function body
-}
-
-// When metrics feature is enabled, it includes instrumentation:
-async fn my_function() -> Result<(), Error> {
-    metrics::counter!("calls_total").increment(1);
-    let start = std::time::Instant::now();
-    let result = async { /* original body */ }.await;
-    metrics::histogram!("duration_seconds").record(start.elapsed().as_secs_f64());
-    if result.is_err() {
-        metrics::counter!("errors_total").increment(1);
-    }
-    result
-}
-```
 
 ## Requirements
 
