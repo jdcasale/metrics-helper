@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/jdcasale/metrics-helper/compare/metrics-helper-macros-v0.1.4...metrics-helper-macros-v0.1.5) (2026-01-08)
+
+
+### Features
+
+* Remove metrics feature flag from generated code ([#12](https://github.com/jdcasale/metrics-helper/issues/12)) ([fd6a3af](https://github.com/jdcasale/metrics-helper/commit/fd6a3af004630b40ec6b17e5c9eaa425884f9b12))
+
 ## [0.1.4](https://github.com/jdcasale/metrics-helper/compare/metrics-helper-macros-v0.1.3...metrics-helper-macros-v0.1.4) (2026-01-06)
 
 
